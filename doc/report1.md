@@ -21,7 +21,7 @@ The application receives an array of a wine's chemical properties and predicts i
 | 9 | pH | Continuous |
 | 10 | sulphates | Continuous |
 | 11 | alcohol | Continuous |
-| 12 | color | Categorical (red or white) |
+| 12 | is white | Categorical (red or white) |
 
 The label is an integer score from 1 to 10, where a higher value indicates superior quality. Because the label is an ordinal integer, this problem can be approached as a regression task.
 The dataset is sourced from the UC Irvine Machine Learning Repository (Wine Quality - <https://archive.ics.uci.edu/dataset/186/wine+quality>).

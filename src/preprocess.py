@@ -13,9 +13,9 @@ url_white = "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-qual
 df_red = pd.read_csv(url_red, sep=';')
 df_white = pd.read_csv(url_white, sep=';')
 
-# Add the `is_white` binary feature such that 0 = Red and 1 = White
-df_red['is_white'] = 0
-df_white['is_white'] = 1
+# Add the `is white` binary feature such that 0 = Red and 1 = White
+df_red['is white'] = 0
+df_white['is white'] = 1
 
 # Combine the two dataframes into one ignoring the indexing as it's not useful to preserve it
 df_wine = pd.concat([df_red, df_white], axis=0, ignore_index=True)
