@@ -39,6 +39,8 @@ X_test_scaled = scaler.transform(X_test)
 # Generate EDA statistics
 print("--- DATASET SUMMARY ---")
 print(f"Total samples (N): {len(df_wine)}")
+print(f"Total white wine samples: {len(df_white)}")
+print(f"Total red wine samples: {len(df_red)}")
 print(f"Feature vector dimension (d): {X.shape[1]}")
 print(f"Train size: {len(X_train)}, Val size: {len(X_val)}, Test size: {len(X_test)}\n")
 
