@@ -44,7 +44,7 @@ print(f"Total red wine samples: {len(df_red)}")
 print(f"Feature vector dimension (d): {X.shape[1]}")
 print(f"Train size: {len(X_train)}, Val size: {len(X_val)}, Test size: {len(X_test)}\n")
 
-print(f"--- FEATURE SUMMARY STATISTICS ---")
+print("--- FEATURE SUMMARY STATISTICS ---")
 print(df_wine.describe().T[['mean', 'std', 'min', 'max']])
 
 # Generate wine counts figure
