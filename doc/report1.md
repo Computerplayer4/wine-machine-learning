@@ -5,6 +5,8 @@ documentclass: article
 header-includes:
   - \usepackage{booktabs}
   - \usepackage{graphicx}
+  - \usepackage{float}
+  - \floatplacement{figure}{H}
 ---
 
 # Machine Learning Project: Predicting Wine Quality
@@ -17,7 +19,7 @@ The rest of this report is structured as follows: Section 2 formalizes the appli
 
 ## 2 Problem Formulation
 
-We formulate this task as a supervised machine learning regression problem. Given an array of physicochemical measurements for a wine sample, our goal is to predict its continuous quality score $y_i \in \mathbb{R}$. Each data point $x_i \in \mathbb{R}^{12}$ represents a single wine sample defined by 12 feature variables:
+We formulate this task as a supervised machine learning regression problem. Given an array of physicochemical measurements for a wine sample, our goal is to predict its integer quality score $y_i \in \mathbb{Z}$. Each data point $x_i \in \mathbb{R}^{12}$ represents a single wine sample defined by 12 feature variables:
 
 | # | Feature Name | Data Type | Description [1] |
 | --- | --- | --- | --- |
@@ -40,7 +42,7 @@ We formulate this task as a supervised machine learning regression problem. Give
 
 The dataset consists of $N = 6497$ total wine samples, split between red wine ($N_{\text{red}} = 1599$) and white wine ($N_{\text{white}} = 4898$). We concatenated both subsets into a single master dataset and introduced an engineered binary feature `is white` ($x_{i, 12} \in \{0, 1\}$) to allow the linear model to account for chemical baseline differences between wine types increasing our feature vector dimension to 12.
 
-Figure 1 shows the sample count split between red and white wines. Figure 2 illustrates the distribution of target quality scores $y$; most ratings cluster around scores 5 and 6, showing that extreme scores are relatively rare, meaning that the data is not heavily skewed in either direction. This helps in making an accurate model.
+Figure 1 shows the sample count split between red and white wines. Figure 2 illustrates the distribution of target quality scores $y$; most ratings cluster around scores 5 and 6, showing that extreme scores are relatively rare, meaning that the data is not heavily skewed in either direction. This helps in making an accurate model. In addition it is worth mentioning that no wine received a score of 0, 1, 2 or 10. These values are, therefore, omitted from the histogram.
 
 ### 3.2 Data correlation
 
@@ -59,6 +61,10 @@ We split the dataset into three disjoint partitions:
 - **Training Set (60%, $N_{\text{train}} = 3898$):** Used for fitting parameter weights.
 - **Validation Set (20%, $N_{\text{val}} = 1299$):** Reserved for hyperparameter tuning ($\lambda$) and model selection.
 - **Test Set (20%, $N_{\text{test}} = 1300$):** Retained untouched for final generalization error evaluation.
+
+This provides a large enough training set without sacrificing validation or test capacity. To prevent feature scale disparities from dominating the $L_2$ penalty, we apply z-score standardization:
+$$\tilde{x}_{ij} = \frac{x_{ij} - \mu_j}{\sigma_j}$$
+To avoid data leakage, feature means ($\mu_j$) and standard deviations ($\sigma_j$) are calculated strictly on the training set and subsequently applied to transform the validation and test sets.
 
 ### 3.4 Model Selection and Loss Function
 
@@ -88,7 +94,7 @@ All of the code, data-analysis and report writing was done by hand by both membe
 
 ## 5 Appendices and References
 
-### 5.1 Appendices
+### 5.1 Visualization
 
 ![Red vs White Wine Distribution](../assets/wine_type_split.png)
 
@@ -112,8 +118,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 # Reading the data
-url_red = "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-red.csv"
-url_white = "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-white.csv"
+url_red = 
+    "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-red.csv"
+url_white = 
+    "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-white.csv"
 
 # Load data into dataframes
 df_red = pd.read_csv(url_red, sep=';')
@@ -123,7 +131,8 @@ df_white = pd.read_csv(url_white, sep=';')
 df_red['is white'] = 0
 df_white['is white'] = 1
 
-# Combine the two dataframes into one ignoring the indexing as it's not useful to preserve it
+# Combine the two dataframes into one ignoring 
+# the indexing as it's not useful to preserve it
 df_wine = pd.concat([df_red, df_white], axis=0, ignore_index=True)
 
 # Form the feature matrix X and label vector y
@@ -131,11 +140,14 @@ X = df_wine.drop(columns=['quality'])
 y = df_wine['quality'].to_numpy()
 
 # Splitting the dataset into training (60 %), validation (20 %) and test (20 %) sets
-X_train, X_val_test, y_train, y_val_test = train_test_split(X, y, test_size=0.4, random_state=42)
-X_val, X_test, y_val, y_test = train_test_split(X_val_test, y_val_test, test_size=0.5, random_state=42)
+X_train, X_val_test, y_train, y_val_test = 
+    train_test_split(X, y, test_size=0.4, random_state=42)
+X_val, X_test, y_val, y_test = 
+    train_test_split(X_val_test, y_val_test, test_size=0.5, random_state=42)
 
 # Normalize the data to zero mean and unit variance
-# We only use training data when calculating mu and sigma as we want to prevent data leakage
+# We only use training data when calculating mu and sigma as 
+# we want to prevent data leakage
 # These values will be used with training and validation data only
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
@@ -158,7 +170,8 @@ print(df_wine.describe().T[['mean', 'std', 'min', 'max']])
 wine_counts = df_wine['is white'].value_counts()
 plt.figure(figsize=(6, 4))
 # Here 0 is Red an 1 is White as before
-plt.bar(['Red Wine', 'White Wine'], [wine_counts.get(0, 0), wine_counts.get(1, 0)], color=['#800020', '#F0E68C'], edgecolor='black')
+plt.bar(['Red Wine', 'White Wine'], [wine_counts.get(0, 0), 
+    wine_counts.get(1, 0)], color=['#800020', '#F0E68C'], edgecolor='black')
 plt.title('Dataset split: Red vs. White Wine Samples')
 plt.xlabel('Wine Type')
 plt.ylabel('Number of Samples (Count)')
@@ -168,7 +181,8 @@ plt.show()
 
 # Generate score histogram
 plt.figure(figsize=(8, 5))
-plt.hist(df_wine['quality'], bins=range(0,11), align='left', rwidth=0.85, color='purple', edgecolor='black', alpha=0.8)
+plt.hist(df_wine['quality'], bins=range(0,11), align='left', rwidth=0.85, 
+    color='purple', edgecolor='black', alpha=0.8)
 plt.title('Distribution of Wine Quality Scores')
 plt.xlabel('Quality Score (Rating)')
 plt.ylabel('Frequency (Number of Samples)')
