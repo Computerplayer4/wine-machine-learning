@@ -21,6 +21,7 @@ def evaluate_model():
     
     best_ridge_alpha = None
     best_ridge_val_mse = float('inf')
+    best_ridge_model = None
     
     for alpha in alphas:
         ridge = Ridge(alpha=alpha, random_state=42)
@@ -35,6 +36,7 @@ def evaluate_model():
         if val_mse < best_ridge_val_mse:
             best_ridge_val_mse = val_mse
             best_ridge_alpha = alpha
+            best_ridge_model = ridge
 
     # === Method 2: Random Forest Regression ===
     depths = [3, 5, 8, 12, 16, 20, None]
@@ -46,3 +48,15 @@ def evaluate_model():
     
     for depth in depths:
         rf = RandomForestRegressor(max_depth=depth, random_state=42)
+        rf.fit(X_tr, y_tr)
+
+        tr_mse = mean_squared_error(y_tr, rf.predict(X_tr))
+        val_mse = mean_squared_error(y_val, rf.predict(X_val))
+        
+        rf_tr_errors.append(tr_mse)
+        rf_val_errors.append(val_mse)
+        
+        if val_mse < best_rf_val_mse:
+            best_rf_val_mse = val_mse
+            best_rf_depth = depth
+            best_rf_model = rf
