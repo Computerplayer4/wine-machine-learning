@@ -1,6 +1,6 @@
 ---
-geometry: margin=1in
-fontsize: 11pt
+geometry: margin=0.9in
+fontsize: 10pt
 documentclass: article
 header-includes:
   - \usepackage{booktabs}
@@ -13,13 +13,13 @@ header-includes:
 
 ## 1 Introduction
 
-This project aims to predict wine quality based on objective physicochemical characteristics, such as acidity, density, pH, and residual sugar and alcohol content [1]. To achieve this, we will develop a machine learning model trained on a dataset of red and white variants of the Portuguese "Vinho Verde" wine. Each wine gets a quality score from 1 to 10, 10 being the best [1].
+This project aims to predict wine quality based on objective physicochemical characteristics, such as acidity, density, pH, and residual sugar and alcohol content [1]. To achieve this, we will develop a machine learning model trained on a dataset of red and white variants of the Portuguese "Vinho Verde" wine. Each wine is assigned an integer quality score rating between 1 and 10 based on sensory evaluations by expert tasting panels [1].
 
-The rest of this report is structured as follows: Section 2 formalizes the application into a machine learning problem; Section 3 describes data preprocessing, correlation analysis, splitting strategy, and the Ridge Regression model; Section 4 analyses the results; Section 5 is the conclusion; Section 6 documents the use of AI tools; and Section 7 presents references and the repository appendix.
+The rest of this report is structured as follows: Section 2 formalizes the application into a machine learning problem; Section 3 describes data preprocessing, stratified splitting, feature engineering, and model hypothesis spaces; Section 4 presents validation results, model selection, and final test set performance; Section 5 concludes with a discussion of findings and limitations; Section 6 documents the use of AI tools; and Section 7 provides references and the repository code appendix.
 
 ## 2 Problem Formulation
 
-We formulate this task as a supervised machine learning regression problem. Given an array of physicochemical measurements for a wine sample, our goal is to predict its integer quality score $y_i \in \mathbb{Z}$. Each data point $x_i \in \mathbb{R}^{12}$ represents a single wine sample defined by 12 feature variables:
+We formulate this task as a supervised machine learning regression problem. Given an array of physicochemical measurements for a wine sample, our goal is to predict its integer quality score $y_i \in \mathbb{Z}$. Each data point $x_i \in \mathbb{R}^{13}$ represents a single wine sample defined by 13 feature variables:
 
 | # | Feature Name | Data Type | Description [1] |
 | --- | --- | --- | --- |
@@ -35,87 +35,110 @@ We formulate this task as a supervised machine learning regression problem. Give
 | 10 | sulphates | Continuous | $\text{SO}_2$ gas additive ($\text{g/dm}^3$) |
 | 11 | alcohol | Continuous | Alcohol content (% by volume) |
 | 12 | is white | Binary | Variant indicator ($1 = \text{white}$, $0 = \text{red}$) |
+| 13 | sulfur ratio | Continuous | Ratio of free to total $\text{SO}_2$ ($\text{free SO}_2 / (\text{total SO}_2 + 10^{-5})$) |
 
 ## 3 Methods
 
-### 3.1 Preparing the data
+### 3.1 Preparing the Data
 
-The dataset consists of $N = 6497$ total wine samples, split between red wine ($N_{\text{red}} = 1599$) and white wine ($N_{\text{white}} = 4898$). We concatenated both subsets into a single master dataset and introduced an engineered binary feature `is white` ($x_{i, 12} \in \{0, 1\}$) to allow the linear model to account for chemical baseline differences between wine types increasing our feature vector dimension to 12.
+The dataset consists of $N = 6497$ total wine samples, split between red wine ($N_{\text{red}} = 1599$) and white wine ($N_{\text{white}} = 4898$). We combined both subsets into a single master dataset and introduced an engineered binary feature `is white` ($x_{i, 12} \in \{0, 1\}$) to allow the linear model to account for chemical baseline differences between wine variants [1].
 
-Figure 1 shows the sample count split between red and white wines. Figure 2 illustrates the distribution of target quality scores $y$; most ratings cluster around scores 5 and 6, showing that extreme scores are relatively rare, meaning that the data is not heavily skewed in either direction. This helps in making an accurate model. In addition it is worth mentioning that no wine received a score of 0, 1, 2 or 10. These values are, therefore, omitted from the histogram.
+Figure 1 displays the sample count split between red and white wines. Figure 2 illustrates the distribution of target quality scores $y$; most ratings cluster around scores 5 and 6, showing that extreme scores are relatively rare, meaning that the data is not heavily skewed in either direction. This helps in making an accurate model. In addition it is worth mentioning that no wine received a score of 0, 1, 2 or 10. These values are, therefore, omitted from the histogram.
 
-### 3.2 Data correlation
+### 3.2 Data correlation and Feature Engineering
 
 Inspection of the Pearson correlation matrix (Figure 3) reveals notable collinearity among several feature pairs:
 
-- **Sulfur Dioxide Metrics:** `free sulfur dioxide` and `total sulfur dioxide` exhibit a strong positive correlation ($r = 0.72$), as free $\text{SO}_2$ is a direct subset of total $\text{SO}_2$. We considered engineering a ratio feature $sulfur_{\text{ratio}} = \frac{\text{free\_sulfur\_dioxide}}{\text{total\_sulfur\_dioxide}}$, which may be tested in Stage 2.
+- **Sulfur Dioxide Metrics:** `free sulfur dioxide` and `total sulfur dioxide` exhibit a strong positive correlation ($r = 0.72$), as free $\text{SO}_2$ is a direct subset of total $\text{SO}_2$.
 - **Density Relationships:** `density` correlates negatively with `alcohol` ($r = -0.69$) and positively with `residual sugar` ($r = 0.55$), reflecting physical fluid properties.
 - **Wine Variant Correlations:** The `is white` feature strongly correlates with `total sulfur dioxide` ($r = 0.70$) and negatively with `volatile acidity` ($r = -0.65$).
 
-We retain all 12 features in our Stage 1 feature vector $X \in \mathbb{R}^{6497 \times 12}$. Retaining the full feature set preserves maximum physical variance and avoids potential underfitting caused by aggressive feature deletion.
+We retain all 12 features in our feature vector. Retaining the full feature set preserves maximum physical variance and avoids potential underfitting caused by aggressive feature deletion.
 
-### 3.3 Data splitting
+Based on our Stage 1 correlation matrix (Figure 3), which revealed a strong positive collinearity between `free sulfur dioxide` and `total sulfur dioxide` ($r = 0.72$), we engineered a 13th feature:
+$$\text{sulfur ratio}_i = \frac{\text{free sulfur dioxide}_i}{\text{total sulfur dioxide}_i + 10^{-5}}$$
+This ratio explicitly measures the relative proportion of active antimicrobial sulfur dioxide relative to overall bound sulfur content. This increases our feature vector dimension to 13: $X \in \mathbb{R}^{6497 \times 13}$.
 
-We split the dataset into three disjoint partitions:
+### 3.3 Data Splitting and Standardization
+
+To preserve class balance across data splits and prevent partition skew between white ($75.4\%$) and red ($24.6\%$) wines, we implemented **stratified random sampling** on the `is white` indicator:
 
 - **Training Set (60%, $N_{\text{train}} = 3898$):** Used for fitting parameter weights.
-- **Validation Set (20%, $N_{\text{val}} = 1299$):** Reserved for hyperparameter tuning ($\lambda$) and model selection.
+- **Validation Set (20%, $N_{\text{val}} = 1299$):** Reserved for hyperparameter tuning and model selection.
 - **Test Set (20%, $N_{\text{test}} = 1300$):** Retained untouched for final generalization error evaluation.
 
-This provides a large enough training set without sacrificing validation or test capacity. To prevent feature scale disparities from dominating the $L_2$ penalty, we apply z-score standardization:
+To prevent feature scale disparities from dominating loss optimization or regularization penalties, all continuous features were standardized using Z-score normalization:
 $$\tilde{x}_{ij} = \frac{x_{ij} - \mu_j}{\sigma_j}$$
-To avoid data leakage, feature means ($\mu_j$) and standard deviations ($\sigma_j$) are calculated strictly on the training set and subsequently applied to transform the validation and test sets.
+To prevent data leakage, mean ($\mu_j$) and standard deviation ($\sigma_j$) parameters were calculated strictly on $X_{\text{train}}$ and subsequently applied to transform $X_{\text{val}}$ and $X_{\text{test}}$.
 
 ### 3.4 Model Selection and Loss Function
 
-To model continuous wine quality while handling correlated features without manual feature dropping, we select **Ridge Regression** and **Random Forest** as our models, comparing their performance at the end.
+To model continuous wine quality while handling correlated features without manual feature dropping, we select **Ridge Regression** (a parametric regularized linear model) and **Random Forest** (a non-parametric tree ensemble) as our models, comparing their performance at the end.
 
-#### 3.4.1 Hypothesis Space
+#### 3.4.1 Method 1: Ridge Regression ($L_2$-Regularized Linear Model)
 
-The hypothesis space consists of linear predictors mapping the 12-dimensional feature vector $x_i$ to a predicted score $\hat{y}_i$:
-$$h(x_i, w) = w_0 + \sum_{j=1}^{12} w_j x_{ij} = w_0 + w^T x_i$$
-where $w_0$ is the intercept/bias term and $w = (w_1, \dots, w_{12})^T$ is the weight vector.
+The linear hypothesis space maps the 13-dimensional scaled feature vector $x_i$ to a predicted continuous rating $\hat{y}_i$:
+$$h_{\text{Ridge}}(x_i; w) = w_0 + \sum_{j=1}^{13} w_j x_{ij} = w_0 + w^T x_i$$
+We fit the weight parameters $w$ using regularized Mean Squared Error (MSE) with an $L_2$-norm penalty:
+$$L_{\text{Ridge}}(w) = \frac{1}{n} \sum_{i=1}^{n} \left(h(x_i; w) - y_i\right)^2 + \alpha \Vert{}w\Vert{}_2^2$$
+where $\Vert{}w\Vert{}_2^2 = \sum_{j=1}^{13} w_j^2$ penalizes large weight magnitudes, and $\alpha \ge 0$ is the regularization hyperparameter controlling the bias-variance tradeoff.
 
-#### 3.4.2 Loss Function and Regularization
+#### 3.4.2 Method 2: Random Forest Regressor (Ensemble of Decision Trees)
 
-We optimize the model using regularized Mean Squared Error (MSE) with an $L_2$-norm penalty:
-$$L(w) = \frac{1}{2n} \sum_{i=1}^{n} \left(h(x_i, w) - y_i\right)^2 + \frac{\lambda}{2} \|w\|_2^2$$
-where $\|w\|_2^2 = \sum_{j=1}^{12} w_j^2$ penalizes large weight magnitudes, and $\lambda \ge 0$ is the regularization hyperparameter. The $L_2$ penalty stabilizes weight estimation in the presence of collinearity (e.g., between sulfur dioxide features), mitigating overfitting and improving generalization performance without losing accuracy or data.
+Random Forest is a non-parametric ensemble method that constructs $B = 100$ decorrelated decision trees $T_b(x)$. Each tree is trained on a bootstrap sample of the training data using random feature subspace splits. The final ensemble prediction is the average across all decision trees:
+$$h_{\text{RF}}(x_i) = \frac{1}{B} \sum_{b=1}^{B} T_b(x_i)$$
+Individual decision tree splits minimize node impurity measured via Mean Squared Error:
+$$\text{MSE}_{\text{node}} = \frac{1}{N_{\text{node}}} \sum_{i \in \text{node}} (y_i - \bar{y}_{\text{node}})^2$$
+We tune the hyperparameter `max_depth` $\in [3, 5, 8, 12, 16, 20, \text{None}]$ to evaluate the trade-off between individual tree capacity and ensemble generalization.
 
 ## 4 Results
 
-- diagrams of the training and validation errors for different models (for both methods)
-- the final chosen method is the one with the least validation error in both cases
-
 ### 4.1 Ridge Regression
+
+We evaluated Ridge Regression across a logarithmic grid of regularization strengths $\alpha \in [10^{-3}, 10^3]$. Figure 4 illustrates the resulting validation curve:
+
+- **Low Regularization ($\alpha < 1.0$):** Validation loss remains flat and optimal ($\text{MSE} \approx 0.5209$).
+- **High Regularization ($\alpha > 10.0$):** As $\alpha$ increases toward $1000$, both training and validation MSE rise sharply ($\text{MSE} > 0.5360$), as the heavy $L_2$ penalty forces weight coefficients too close to zero, causing underfitting (high bias).
+
+The optimal hyperparameter was identified at $\alpha = 2.9764$, achieving a **Validation MSE of $0.5209$**.
 
 ### 4.2 Random Forest
 
+We evaluated Random Forest performance across varying maximum tree depth constraints. Figure 5 presents the validation curve:
+
+- **Shallow Trees ($\text{max\_depth} \le 5$):** High bias dominates, resulting in elevated training and validation MSE ($\text{MSE} \approx 0.48–0.53$).
+- **Deep Trees ($\text{max\_depth} \ge 12$):** Training MSE drops steadily toward $0.06$ as deep decision trees memorize training patterns. However, Validation MSE plateaus near $0.3800$.
+- **Unconstrained Growth ($\text{max\_depth} = \text{None}$):** The lowest validation error was achieved when tree depth was unconstrained ($\mathbf{\text{max\_depth} = \text{None}}$), yielding a **Validation MSE of $0.3803$**.
+
+While individual unpruned trees overfit, Random Forest's bootstrap aggregation (bagging) and feature subsampling neutralize individual tree noise, enabling deep trees to model complex non-linear feature interactions without degrading validation performance.
+
 ### 4.3 Comparison
 
-- chosing between ridge and random forest?
-- test error(s)
+Random Forest outperformed Ridge Regression by **$27.0\%$** in Validation MSE ($0.3803$ vs $0.5209$). This substantial improvement demonstrates that wine quality is non-linear and benefits from decision tree ensembles capable of capturing complex interactions among chemical properties (such as alcohol content, volatile acidity, and density).
+
+Having selected Random Forest Regressor ($\text{max\_depth} = \text{None}$) based on validation error, we evaluated its generalization performance on the held-out test set ($N_{\text{test}} = 1300$)
+
+The Test MSE ($0.3811$) is virtually identical to the Validation MSE ($0.3803$), confirming that the model generalizes reliably to unseen samples without overfitting. An $R^2$ score of $0.5064$ indicates that the model accounts for $50.6\%$ of the total variance in human quality ratings using objective chemical features alone. A Test MAE of $0.4419$ shows that, on average, predictions deviate from sensory ratings by less than half a rating point. Figure 6 provides a visual summary table of these results.
 
 ## 5 Conclusion
 
 ### 5.1 Summary
 
-In this project, we evaluated multiple Ridge Regression and Random Forest models to predict wine quality. Based on the validation errors, the Random Forest model with unrestricted depth achieved the best performane.
+In this project, we built an end-to-end machine learning pipeline to predict Portuguese "Vinho Verde" wine quality ratings from 13 physicochemical variables. By implementing stratified data splitting, Z-score normalization, ratio feature engineering, and hyperparameter grid searches, we maintained a rigorous experimental framework. Comparing linear (Ridge Regression) and non-parametric ensemble (Random Forest) models revealed that Random Forest far better captures non-linear chemical relationships, achieving a final Test MSE of $0.3811$, Test MAE of $0.4419$, and $R^2 = 0.5064$.
 
-### 5.2 Limitations and possible improvements
+### 5.2 Limitations and Future Work
 
-The greatest limitation of our application is the fact that the dataset consists exclusively of the red and white variants of the Portuguese "Vinho Verde" wine. Consequently, it is unlikely that our model would perform as accurately if applied to other wine varieties or regions.
+The primary limitation of this application is the inherent subjectivity and irreducible noise present in human sensory scores assigned by tasting panels. Objective chemical measurements alone cannot capture organoleptic factors such as aroma subtlety or flavor complexity. Furthermore, because the dataset consists exclusively of Portuguese "Vinho Verde" wines, the trained model may not generalize directly to other global wine varieties or production techniques.
 
-- TODO: room for improvement?
+Future work could investigate gradient boosted decision trees (such as XGBoost or LightGBM) or explore ordinal regression loss functions tailored to discrete ordered ratings.
 
 ## 6 Use of AI
 
 In our project AI (Google Gemini) was used for the following tasks:
 
-- **Brainstorming** Exploring different datasets and their suitability for our purposes.
+- **Brainstorming** Exploring different datasets and their suitability for our purposes, feature engineering ideas and general modeling strategies.
 - **LaTeX and Markdown formatting** Helping while writing our report to make sure that the document looks correct and does not have any syntax errors.
 - **Report Structure and Grammar** Reviewing the grammar of the the report and its structure and suggesting possible fixes.
-- TODO: usage in 2nd stage
 
 All of the code, data-analysis and report writing was done by hand by both members of the team. All of the AI suggestions were considered and reviewed carefully together.
 
@@ -133,14 +156,14 @@ All of the code, data-analysis and report writing was done by hand by both membe
 
 ![Validation Errors in the Random Forest Models](../assets/rf_validation_curve.png)
 
-![Model Comparison](../assets/model_performance_matrix.png)
+![Model Comparison](../assets/model_performance_summary.png)
 
 ### 7.2 Source Code
 
 The full, runnable, source code is available in a public, anonymous GitHub repository:
 <https://github.com/Computerplayer4/wine-machine-learning>
 
-For reading convenience, it is also available below \[2\]\[3\]\[4\]\[5\]\[6\]:
+For reading convenience, it is also available below [2][3][4][5][6]:
 
 `preprocess.py`
 
@@ -185,8 +208,10 @@ def load_and_preprocess_data():
 
     # Splitting the dataset into training (60 %), validation (20 %) and test (20 %) sets
     # Stratified sampling is used to ensure that distribution of red and whit wines is preserved
-    X_train, X_val_test, y_train, y_val_test = train_test_split(X, y, test_size=0.4, random_state=42, stratify=X['is white'])
-    X_val, X_test, y_val, y_test = train_test_split(X_val_test, y_val_test, test_size=0.5, random_state=42, stratify=X_val_test['is white'])
+    X_train, X_val_test, y_train, y_val_test 
+        = train_test_split(X, y, test_size=0.4, random_state=42, stratify=X['is white'])
+    X_val, X_test, y_val, y_test 
+        = train_test_split(X_val_test, y_val_test, test_size=0.5, random_state=42, stratify=X_val_test['is white'])
 
     # Normalize the data to zero mean and unit variance
     # We only use training data when calculating mu and sigma as we want to prevent data leakage
@@ -228,7 +253,8 @@ def generate_eda_plots(df_wine):
     wine_counts = df_wine['is white'].value_counts()
     plt.figure(figsize=(6, 4))
     # Here 0 is Red an 1 is White as before
-    plt.bar(['Red Wine', 'White Wine'], [wine_counts.get(0, 0), wine_counts.get(1, 0)], color=['#800020', '#F0E68C'], edgecolor='black')
+    plt.bar(['Red Wine', 'White Wine'], [wine_counts.get(0, 0), wine_counts.get(1, 0)], 
+        color=['#800020', '#F0E68C'], edgecolor='black')
     plt.title('Dataset split: Red vs. White Wine Samples')
     plt.xlabel('Wine Type')
     plt.ylabel('Number of Samples (Count)')
@@ -238,7 +264,8 @@ def generate_eda_plots(df_wine):
 
     # Generate score histogram
     plt.figure(figsize=(8, 5))
-    plt.hist(df_wine['quality'], bins=range(3,11), align='left', rwidth=0.85, color='purple', edgecolor='black', alpha=0.8)
+    plt.hist(df_wine['quality'], bins=range(3,11), align='left', rwidth=0.85, color='purple',
+         edgecolor='black', alpha=0.8)
     plt.title('Distribution of Wine Quality Scores')
     plt.xlabel('Quality Score (Rating)')
     plt.ylabel('Frequency (Number of Samples)')
@@ -337,7 +364,8 @@ def evaluate_model():
     plt.figure(figsize=(7, 4))
     plt.semilogx(alphas, ridge_tr_errors, label='Train MSE', color='blue', linestyle='--')
     plt.semilogx(alphas, ridge_val_errors, label='Validation MSE', color='red')
-    plt.axvline(best_ridge_alpha, color='black', linestyle=':', label=f'Best Alpha ({best_ridge_alpha:.2f})')
+    plt.axvline(best_ridge_alpha, color='black', linestyle=':', 
+        label=f'Best Alpha ({best_ridge_alpha:.2f})')
     plt.title('Ridge Regression: Validation Curve')
     plt.xlabel('Alpha (Regularization Strength)')
     plt.ylabel('Mean Squared Error')
@@ -392,17 +420,20 @@ def evaluate_model():
         test_mse, test_mae, test_r2, best_ridge_alpha, best_rf_depth
     )
    
-def save_visual_results_table(ridge_val_mse, rf_val_mse, winning_name, test_mse, test_mae, test_r2, best_ridge_alpha, best_rf_depth):
+def save_visual_results_table(ridge_val_mse, rf_val_mse, winning_name, test_mse, 
+test_mae, test_r2, best_ridge_alpha, best_rf_depth):
     """Save the performance metrics as a table in the assets directory"""
     project_root = Path(__file__).resolve().parent.parent
     assets_dir = project_root / 'assets'
     assets_dir.mkdir(parents=True, exist_ok=True)
 
-    rf_depth_str = f"max_depth = {best_rf_depth}" if best_rf_depth is not None else "max_depth = None"
+    rf_depth_str = f"max_depth = {best_rf_depth}" if best_rf_depth is not None 
+        else "max_depth = None"
     
     data_matrix = [
         ["Ridge Regression", f"alpha = {best_ridge_alpha:.4f}", f"{ridge_val_mse:.4f}", "—", "—", "—"],
-        [f"{winning_name}", rf_depth_str, f"{rf_val_mse:.4f}", f"{test_mse:.4f}", f"{test_mae:.4f}", f"{test_r2:.4f}"]
+        [f"{winning_name}", rf_depth_str, f"{rf_val_mse:.4f}", 
+        f"{test_mse:.4f}", f"{test_mae:.4f}", f"{test_r2:.4f}"]
     ]
     columns = ["Model Class", "Best Hyperparameter", "Validation MSE", "Test MSE", "Test MAE", "Test R²"]
     
@@ -433,14 +464,14 @@ if __name__ == "__main__":
 
 ### 7.3 References
 
-\[1\] P. Cortez, A. Cerdeira, F. Almeida, T. Matos, and J. Reis. "Wine Quality," UCI Machine Learning Repository, 2009. \[Online\]. Available: <https://doi.org/10.24432/C56S3T>.
+[1] P. Cortez, A. Cerdeira, F. Almeida, T. Matos, and J. Reis. "Wine Quality," UCI Machine Learning Repository, 2009. \[Online\]. Available: <https://doi.org/10.24432/C56S3T>.
 
-\[2\] “pandas documentation — pandas 3.0.5 documentation.” <https://pandas.pydata.org/docs/>
+[2] “pandas documentation — pandas 3.0.5 documentation.” <https://pandas.pydata.org/docs/>
 
-\[3\] “NumPy documentation — NumPy v2.5 Manual.” <https://numpy.org/doc/stable/>
+[3] “NumPy documentation — NumPy v2.5 Manual.” <https://numpy.org/doc/stable/>
 
-\[4\] “seaborn: statistical data visualization — seaborn 0.13.2 documentation.” <https://seaborn.pydata.org/>
+[4] “seaborn: statistical data visualization — seaborn 0.13.2 documentation.” <https://seaborn.pydata.org/>
 
-\[5\] “Using Matplotlib — Matplotlib 3.11.2 documentation.” <https://matplotlib.org/stable/users/index>
+[5] “Using Matplotlib — Matplotlib 3.11.2 documentation.” <https://matplotlib.org/stable/users/index>
 
-\[6\] “User Guide,” Scikit-learn. <https://scikit-learn.org/stable/user_guide.html>
+[6] “User Guide,” Scikit-learn. <https://scikit-learn.org/stable/user_guide.html>
