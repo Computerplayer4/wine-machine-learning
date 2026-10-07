@@ -68,8 +68,7 @@ To avoid data leakage, feature means ($\mu_j$) and standard deviations ($\sigma_
 
 ### 3.4 Model Selection and Loss Function
 
-To model continuous wine quality while handling correlated features without manual feature dropping, we select **Ridge Regression** as our model.
-TODO: random forest
+To model continuous wine quality while handling correlated features without manual feature dropping, we select **Ridge Regression** and **Random Forest** as our models, comparing their performance at the end.
 
 #### 3.4.1 Hypothesis Space
 
@@ -101,12 +100,13 @@ where $\|w\|_2^2 = \sum_{j=1}^{12} w_j^2$ penalizes large weight magnitudes, and
 
 ### 5.1 Summary
 
-- after trying multiple ridge regression and random forest models, the \_ with \_ turned out to be best based on the validation errors
+In this project, we evaluated multiple Ridge Regression and Random Forest models to predict wine quality. Based on the validation errors, the Random Forest model with unrestricted depth achieved the best performane.
 
 ### 5.2 Limitations and possible improvements
 
-- room for improvement?
-- limitations: wines only of a specific type (red and white variants of the Portuguese "Vinho Verde" wine), might not work very well for any other types
+The greatest limitation of our application is the fact that the dataset consists exclusively of the red and white variants of the Portuguese "Vinho Verde" wine. Consequently, it is unlikely that our model would perform as accurately if applied to other wine varieties or regions.
+
+- TODO: room for improvement?
 
 ## 6 Use of AI
 
@@ -129,6 +129,12 @@ All of the code, data-analysis and report writing was done by hand by both membe
 
 ![Pearson Correlation Matrix](../assets/correlation_matrix.png)
 
+![Validation Errors in the Ridge Regression Models](../assets/ridge_validation_curve.png)
+
+![Validation Errors in the Random Forest Models](../assets/rf_validation_curve.png)
+
+![Model Comparison](../assets/model_performance_matrix.png)
+
 ### 7.2 Source Code
 
 The full, runnable, source code is available in a public, anonymous GitHub repository:
@@ -136,95 +142,293 @@ The full, runnable, source code is available in a public, anonymous GitHub repos
 
 For reading convenience, it is also available below \[2\]\[3\]\[4\]\[5\]\[6\]:
 
+`preprocess.py`
+
 ```python
+"""This module contains functions for loading and preprocessing 
+the wine quality dataset from the UCI repository, 
+as well as generating exploratory data analysis (EDA) plots."""
+
 import pandas as pd
-import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from pathlib import Path
 
-# Reading the data
-url_red = 
-    "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-red.csv"
-url_white = 
-    "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-white.csv"
 
-# Load data into dataframes
-df_red = pd.read_csv(url_red, sep=';')
-df_white = pd.read_csv(url_white, sep=';')
+def load_and_preprocess_data():
+    """Load and preprocess the wine quality dataset from UCI repository."""
+    
+    # Reading the data
+    url_red = "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-red.csv"
+    url_white = "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-white.csv"
 
-# Add the `is white` binary feature such that 0 = Red and 1 = White
-df_red['is white'] = 0
-df_white['is white'] = 1
+    # Load data into dataframes
+    df_red = pd.read_csv(url_red, sep=';')
+    df_white = pd.read_csv(url_white, sep=';')
 
-# Combine the two dataframes into one ignoring 
-# the indexing as it's not useful to preserve it
-df_wine = pd.concat([df_red, df_white], axis=0, ignore_index=True)
+    # Add the `is white` binary feature such that 0 = Red and 1 = White
+    df_red['is white'] = 0
+    df_white['is white'] = 1
 
-# Form the feature matrix X and label vector y
-X = df_wine.drop(columns=['quality'])
-y = df_wine['quality'].to_numpy()
+    # Combine the two dataframes into one ignoring the indexing as it's not useful to preserve it
+    df_wine = pd.concat([df_red, df_white], axis=0, ignore_index=True)
+    
+    # Custom engineered feature
+    # The small addition of 1e-5 makes sure we never divide by 0
+    df_wine['sulfur ratio'] = df_wine['free sulfur dioxide'] / (df_wine['total sulfur dioxide'] + 1e-5)
 
-# Splitting the dataset into training (60 %), validation (20 %) and test (20 %) sets
-X_train, X_val_test, y_train, y_val_test = 
-    train_test_split(X, y, test_size=0.4, random_state=42)
-X_val, X_test, y_val, y_test = 
-    train_test_split(X_val_test, y_val_test, test_size=0.5, random_state=42)
+    # Form the feature matrix X and label vector y
+    X = df_wine.drop(columns=['quality'])
+    y = df_wine['quality'].to_numpy()
 
-# Normalize the data to zero mean and unit variance
-# We only use training data when calculating mu and sigma as 
-# we want to prevent data leakage
-# These values will be used with training and validation data only
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_val_scaled = scaler.transform(X_val)
-X_test_scaled = scaler.transform(X_test)
+    # Splitting the dataset into training (60 %), validation (20 %) and test (20 %) sets
+    # Stratified sampling is used to ensure that distribution of red and whit wines is preserved
+    X_train, X_val_test, y_train, y_val_test = train_test_split(X, y, test_size=0.4, random_state=42, stratify=X['is white'])
+    X_val, X_test, y_val, y_test = train_test_split(X_val_test, y_val_test, test_size=0.5, random_state=42, stratify=X_val_test['is white'])
 
-# Generate EDA statistics
-print("--- DATASET SUMMARY ---")
-print(f"Total samples (N): {len(df_wine)}")
-print(f"Total white wine samples: {len(df_white)}")
-print(f"Total red wine samples: {len(df_red)}")
-print(f"Feature vector dimension (d): {X.shape[1]}")
-print(f"Train size: {len(X_train)}, Val size: {len(X_val)}, Test size: {len(X_test)}\n")
+    # Normalize the data to zero mean and unit variance
+    # We only use training data when calculating mu and sigma as we want to prevent data leakage
+    # These values will be used with training and validation data only
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_val_scaled = scaler.transform(X_val)
+    X_test_scaled = scaler.transform(X_test)
+    
+    feature_names = X.columns.tolist()
+    
+    # Generate dataset summary
+    print("--- DATASET SUMMARY ---")
+    print(f"Total samples (N): {len(df_wine)}")
+    print(f"Total white wine samples: {len(df_white)}")
+    print(f"Total red wine samples: {len(df_red)}")
+    print(f"Feature vector dimension (d): {X.shape[1]}")
+    print(f"Train size: {len(X_train)}, Val size: {len(X_val)}, Test size: {len(X_test)}\n")
 
-print(f"--- FEATURE SUMMARY STATISTICS ---")
-print(df_wine.describe().T[['mean', 'std', 'min', 'max']])
+    print("--- FEATURE SUMMARY STATISTICS ---")
+    print(df_wine.describe().T[['mean', 'std', 'min', 'max']])
+    print("\nData preprocessing completed successfully.\n")
+    return {
+        'X_train': X_train_scaled, 'y_train': y_train,
+        'X_val': X_val_scaled,     'y_val': y_val,
+        'X_test': X_test_scaled,   'y_test': y_test,
+        'feature_names': feature_names,
+        'df_wine': df_wine
+    }
 
-# Generate wine counts figure
+def generate_eda_plots(df_wine):
+    """Generate exploratory data analysis statistics and plots for the wine data."""
 
-wine_counts = df_wine['is white'].value_counts()
-plt.figure(figsize=(6, 4))
-# Here 0 is Red an 1 is White as before
-plt.bar(['Red Wine', 'White Wine'], [wine_counts.get(0, 0), 
-    wine_counts.get(1, 0)], color=['#800020', '#F0E68C'], edgecolor='black')
-plt.title('Dataset split: Red vs. White Wine Samples')
-plt.xlabel('Wine Type')
-plt.ylabel('Number of Samples (Count)')
-plt.grid(axis='y', linestyle='--', alpha=0.7)
-plt.savefig('../assets/wine_type_split.png')
-plt.show()
+    project_root = Path(__file__).resolve().parent.parent
+    assests_dir = project_root / 'assets'
+    assests_dir.mkdir(parents=True, exist_ok=True)
 
-# Generate score histogram
-plt.figure(figsize=(8, 5))
-plt.hist(df_wine['quality'], bins=range(0,11), align='left', rwidth=0.85, 
-    color='purple', edgecolor='black', alpha=0.8)
-plt.title('Distribution of Wine Quality Scores')
-plt.xlabel('Quality Score (Rating)')
-plt.ylabel('Frequency (Number of Samples)')
-plt.xticks(range(0, 10))
-plt.grid(axis='y', linestyle='--', alpha=0.7)
-plt.savefig('../assets/quality_histogram.png')
-plt.show()
+    # Generate wine counts figure
+    wine_counts = df_wine['is white'].value_counts()
+    plt.figure(figsize=(6, 4))
+    # Here 0 is Red an 1 is White as before
+    plt.bar(['Red Wine', 'White Wine'], [wine_counts.get(0, 0), wine_counts.get(1, 0)], color=['#800020', '#F0E68C'], edgecolor='black')
+    plt.title('Dataset split: Red vs. White Wine Samples')
+    plt.xlabel('Wine Type')
+    plt.ylabel('Number of Samples (Count)')
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.savefig(assests_dir / 'wine_type_split.png')
+    plt.show()
 
-# Generate Pearson Correlation Matrix Heatmap
-plt.figure(figsize=(10, 8))
-sns.heatmap(df_wine.corr(), annot=True, fmt=".2f", cmap="coolwarm")
-plt.title("Pearson Correlation Matrix - Combined Wine Quality")
-plt.tight_layout()
-plt.savefig("../assets/correlation_matrix.png", dpi=300)
-plt.show()
+    # Generate score histogram
+    plt.figure(figsize=(8, 5))
+    plt.hist(df_wine['quality'], bins=range(3,11), align='left', rwidth=0.85, color='purple', edgecolor='black', alpha=0.8)
+    plt.title('Distribution of Wine Quality Scores')
+    plt.xlabel('Quality Score (Rating)')
+    plt.ylabel('Frequency (Number of Samples)')
+    plt.xticks(range(3, 10))
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.savefig(assests_dir / 'quality_histogram.png')
+    plt.show()
+
+    # Generate Pearson Correlation Matrix Heatmap
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(df_wine.corr(), annot=True, fmt=".2f", cmap="coolwarm")
+    plt.title("Pearson Correlation Matrix - Combined Wine Quality")
+    plt.tight_layout()
+    plt.savefig(assests_dir / "correlation_matrix.png", dpi=300)
+    plt.show()
+
+if __name__ == "__main__":
+    data = load_and_preprocess_data()
+    generate_eda_plots(data['df_wine'])
+    print("Preprocessing and EDA complete")
+```
+
+`training.py`
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.linear_model import Ridge
+from sklearn.ensemble import RandomForestRegressor
+from pathlib import Path
+
+from preprocess import load_and_preprocess_data
+
+def evaluate_model():
+    """Evaluate the performance of Ridge and Random Forest models on the wine quality dataset."""
+    
+    # === Load and preprocess the data ===
+    data = load_and_preprocess_data()
+    X_tr, y_tr = data['X_train'], data['y_train']
+    X_val, y_val = data['X_val'], data['y_val']
+    X_te, y_te = data['X_test'], data['y_test']
+    
+    # === Method 1: Ridge Regression ===
+    alphas = np.logspace(-3, 3, 20)
+    ridge_tr_errors, ridge_val_errors = [], []
+    
+    best_ridge_alpha = None
+    best_ridge_val_mse = float('inf')
+    best_ridge_model = None
+    
+    for alpha in alphas:
+        ridge = Ridge(alpha=alpha, random_state=42)
+        ridge.fit(X_tr, y_tr)
+        
+        tr_mse = mean_squared_error(y_tr, ridge.predict(X_tr))
+        val_mse = mean_squared_error(y_val, ridge.predict(X_val))
+        
+        ridge_tr_errors.append(tr_mse)
+        ridge_val_errors.append(val_mse)
+        
+        if val_mse < best_ridge_val_mse:
+            best_ridge_val_mse = val_mse
+            best_ridge_alpha = alpha
+            best_ridge_model = ridge
+
+    # === Method 2: Random Forest Regression ===
+    depths = [3, 5, 8, 12, 16, 20, None]
+    depths_labels = [str(d) for d in depths]
+    rf_tr_errors, rf_val_errors = [], []
+    
+    best_rf_depth = None
+    best_rf_val_mse = float('inf')
+    best_rf_model = None
+    
+    for depth in depths:
+        rf = RandomForestRegressor(max_depth=depth, random_state=42)
+        rf.fit(X_tr, y_tr)
+
+        tr_mse = mean_squared_error(y_tr, rf.predict(X_tr))
+        val_mse = mean_squared_error(y_val, rf.predict(X_val))
+        
+        rf_tr_errors.append(tr_mse)
+        rf_val_errors.append(val_mse)
+        
+        if val_mse < best_rf_val_mse:
+            best_rf_val_mse = val_mse
+            best_rf_depth = depth
+            best_rf_model = rf
+
+    project_root = Path(__file__).resolve().parent.parent
+    assets_dir = project_root / 'assets'
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Ridge Regression Validation Curve
+    plt.figure(figsize=(7, 4))
+    plt.semilogx(alphas, ridge_tr_errors, label='Train MSE', color='blue', linestyle='--')
+    plt.semilogx(alphas, ridge_val_errors, label='Validation MSE', color='red')
+    plt.axvline(best_ridge_alpha, color='black', linestyle=':', label=f'Best Alpha ({best_ridge_alpha:.2f})')
+    plt.title('Ridge Regression: Validation Curve')
+    plt.xlabel('Alpha (Regularization Strength)')
+    plt.ylabel('Mean Squared Error')
+    plt.legend()
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(assets_dir / 'ridge_validation_curve.png')
+    plt.show()
+
+    # Random Forest Regression Validation Curve
+    plt.figure(figsize=(7, 4))
+    x_indices = range(len(depths))
+    plt.plot(x_indices, rf_tr_errors, label='Train MSE', color='blue', linestyle='--')
+    plt.plot(x_indices, rf_val_errors, label='Validation MSE', color='red')
+    plt.xticks(x_indices, depths_labels)
+    plt.title('Random Forest Regression: Validation Curve')
+    plt.xlabel('Max Depth')
+    plt.ylabel('Mean Squared Error')
+    plt.legend()
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(assets_dir / 'rf_validation_curve.png')
+    plt.show()
+    
+    print("=== Model Validation Summary ===")
+    print(f"Best Ridge Regression Alpha: {best_ridge_alpha:.4f} with Validation MSE: {best_ridge_val_mse:.4f}")
+    print(f"Best Random Forest Max Depth: {best_rf_depth} with Validation MSE: {best_rf_val_mse:.4f}")
+    
+    if best_rf_val_mse < best_ridge_val_mse:
+        winning_name = "Random Forest Regression"
+        winning_model = best_rf_model
+        winning_val_mse = best_rf_val_mse
+    else:
+        winning_name = "Ridge Regression"
+        winning_model = best_ridge_model
+        winning_val_mse = best_ridge_val_mse
+    
+    print(f"Selected Model for Testing: {winning_name} with Validation MSE: {winning_val_mse:.4f}")
+    
+    test_preds = winning_model.predict(X_te)
+    test_mse = mean_squared_error(y_te, test_preds)
+    test_mae = mean_absolute_error(y_te, test_preds)
+    test_r2 = r2_score(y_te, test_preds)
+    
+    print("\n=== Test Set Performance ===")
+    print(f"Test MSE: {test_mse:.4f}")
+    print(f"Test MAE: {test_mae:.4f}")
+    print(f"Test R^2 Score: {test_r2:.4f}")
+    
+    save_visual_results_table(
+        best_ridge_val_mse, best_rf_val_mse, winning_name, 
+        test_mse, test_mae, test_r2, best_ridge_alpha, best_rf_depth
+    )
+   
+def save_visual_results_table(ridge_val_mse, rf_val_mse, winning_name, test_mse, test_mae, test_r2, best_ridge_alpha, best_rf_depth):
+    """Save the performance metrics as a table in the assets directory"""
+    project_root = Path(__file__).resolve().parent.parent
+    assets_dir = project_root / 'assets'
+    assets_dir.mkdir(parents=True, exist_ok=True)
+
+    rf_depth_str = f"max_depth = {best_rf_depth}" if best_rf_depth is not None else "max_depth = None"
+    
+    data_matrix = [
+        ["Ridge Regression", f"alpha = {best_ridge_alpha:.4f}", f"{ridge_val_mse:.4f}", "—", "—", "—"],
+        [f"{winning_name}", rf_depth_str, f"{rf_val_mse:.4f}", f"{test_mse:.4f}", f"{test_mae:.4f}", f"{test_r2:.4f}"]
+    ]
+    columns = ["Model Class", "Best Hyperparameter", "Validation MSE", "Test MSE", "Test MAE", "Test R²"]
+    
+    fig, ax = plt.subplots(figsize=(13, 2.2))
+    ax.axis('tight')
+    ax.axis('off')
+    
+    table = ax.table(cellText=data_matrix, colLabels=columns, loc='center', cellLoc='center')
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1.2, 1.8)
+    
+    for (row, col), cell in table.get_celld().items():
+        if row == 0:
+            cell.set_text_props(weight='bold', color='white')
+            cell.set_facecolor('#2C3E50')
+        else:
+            cell.set_facecolor('#E8F8F5' if row == 2 else '#F8F9F9')
+    
+    plt.title("Model Performance Summary", fontsize=12, weight='bold', pad=12)
+    plt.tight_layout()
+    plt.savefig(assets_dir / 'model_performance_summary.png')
+    plt.show()
+
+if __name__ == "__main__":
+    evaluate_model()
 ```
 
 ### 7.3 References
