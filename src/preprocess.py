@@ -1,9 +1,13 @@
+"""This module contains functions for loading and preprocessing 
+the wine quality dataset from the UCI repository, 
+as well as generating exploratory data analysis (EDA) plots."""
+
 import pandas as pd
-import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from pathlib import Path
 
 
 def load_and_preprocess_data():
@@ -33,8 +37,9 @@ def load_and_preprocess_data():
     y = df_wine['quality'].to_numpy()
 
     # Splitting the dataset into training (60 %), validation (20 %) and test (20 %) sets
-    X_train, X_val_test, y_train, y_val_test = train_test_split(X, y, test_size=0.4, random_state=42)
-    X_val, X_test, y_val, y_test = train_test_split(X_val_test, y_val_test, test_size=0.5, random_state=42)
+    # Stratified sampling is used to ensure that distribution of red and whit wines is preserved
+    X_train, X_val_test, y_train, y_val_test = train_test_split(X, y, test_size=0.4, random_state=42, stratify=X['is white'])
+    X_val, X_test, y_val, y_test = train_test_split(X_val_test, y_val_test, test_size=0.5, random_state=42, stratify=X_val_test['is white'])
 
     # Normalize the data to zero mean and unit variance
     # We only use training data when calculating mu and sigma as we want to prevent data leakage
@@ -56,7 +61,7 @@ def load_and_preprocess_data():
 
     print("--- FEATURE SUMMARY STATISTICS ---")
     print(df_wine.describe().T[['mean', 'std', 'min', 'max']])
-    
+    print("\nData preprocessing completed successfully.\n")
     return {
         'X_train': X_train_scaled, 'y_train': y_train,
         'X_val': X_val_scaled,     'y_val': y_val,
@@ -68,8 +73,11 @@ def load_and_preprocess_data():
 def generate_eda_plots(df_wine):
     """Generate exploratory data analysis statistics and plots for the wine data."""
 
-    # Generate wine counts figure
+    project_root = Path(__file__).resolve().parent.parent
+    assests_dir = project_root / 'assets'
+    assests_dir.mkdir(parents=True, exist_ok=True)
 
+    # Generate wine counts figure
     wine_counts = df_wine['is white'].value_counts()
     plt.figure(figsize=(6, 4))
     # Here 0 is Red an 1 is White as before
@@ -78,7 +86,7 @@ def generate_eda_plots(df_wine):
     plt.xlabel('Wine Type')
     plt.ylabel('Number of Samples (Count)')
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.savefig('../assets/wine_type_split.png')
+    plt.savefig(assests_dir / 'wine_type_split.png')
     plt.show()
 
     # Generate score histogram
@@ -89,7 +97,7 @@ def generate_eda_plots(df_wine):
     plt.ylabel('Frequency (Number of Samples)')
     plt.xticks(range(3, 10))
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.savefig('../assets/quality_histogram.png')
+    plt.savefig(assests_dir / 'quality_histogram.png')
     plt.show()
 
     # Generate Pearson Correlation Matrix Heatmap
@@ -97,10 +105,11 @@ def generate_eda_plots(df_wine):
     sns.heatmap(df_wine.corr(), annot=True, fmt=".2f", cmap="coolwarm")
     plt.title("Pearson Correlation Matrix - Combined Wine Quality")
     plt.tight_layout()
-    plt.savefig("../assets/correlation_matrix.png", dpi=300)
+    plt.savefig(assests_dir / "correlation_matrix.png", dpi=300)
     plt.show()
-    
+
 if __name__ == "__main__":
     data = load_and_preprocess_data()
     generate_eda_plots(data['df_wine'])
     print("Preprocessing and EDA complete")
+    
