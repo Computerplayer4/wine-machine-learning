@@ -20,10 +20,16 @@ pip install numpy pandas scikit-learn matplotlib seaborn
 
 ## Usage
 
-The repository currently only contains a preprocessing script (inside `src`). This can be run with the following command:
+The repository currently contains a preprocessing script `preprocess.py` that preprocesses the data and generates figures describing it. (inside `src`). This can be run with the following command (from project root):
 
 ```bash
-python3 preprocess.py
+python3 ./src/preprocess.py
+```
+
+To run the actual model against the data, a different script, `training.py` is used. This script calls the preprocessing function from the other script and then trains the model and prints the results. It can be run with the following command (from project root):
+
+```bash
+python3 ./src/training.py
 ```
 
 ## Files
